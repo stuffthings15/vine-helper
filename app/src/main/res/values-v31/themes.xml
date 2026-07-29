@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VineHelper" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/launch_screen</item>
+        <item name="android:statusBarColor">#0A0D14</item>
+        <item name="android:navigationBarColor">#141923</item>
+        <item name="android:windowSplashScreenBackground">#1F2635</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    </style>
+</resources>
