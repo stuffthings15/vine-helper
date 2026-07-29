@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -701,18 +702,35 @@ fun FeedItemCard(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.width(80.dp)
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(item.imgUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                    Box(
                         modifier = Modifier
                             .size(80.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.05f))
-                    )
+                            .background(Color.White.copy(alpha = 0.05f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (item.imgUrl.isBlank()) {
+                            Icon(
+                                imageVector = Icons.Default.ImageNotSupported,
+                                contentDescription = "Product image unavailable",
+                                tint = VineTextSecondary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        } else {
+                            val unavailablePainter = rememberVectorPainter(Icons.Default.ImageNotSupported)
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(item.imgUrl)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "Product image",
+                                contentScale = ContentScale.Crop,
+                                placeholder = unavailablePainter,
+                                error = unavailablePainter,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(16.dp))

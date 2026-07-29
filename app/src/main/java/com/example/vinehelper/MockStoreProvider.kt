@@ -160,10 +160,10 @@ object MockStoreProvider {
             <span class="a-popover-header-content">Product Details</span>
             <button class="a-button-close" onclick="closeModal()">&times;</button>
           </div>
-          <div class="a-popover-inner">
-            <div id="vvp-product-details-modal">
-              <img id="modal-img" src="" alt="product-img">
-              <h3 id="modal-title"></h3>
+            <div class="a-popover-inner">
+              <div id="vvp-product-details-modal">
+              <img id="vvp-product-details-modal--hero-image" src="" alt="product-img">
+              <h3 id="vvp-product-details-modal--product-title"></h3>
               <p id="modal-asin"></p>
               <div class="modal-buttons">
                 <button class="a-button" style="background:#4a5568; color:white;" onclick="closeModal()">Back</button>
@@ -225,8 +225,10 @@ object MockStoreProvider {
             var title = tile ? tile.querySelector('.vvp-item-product-title-container a').textContent.trim() : 'Mock Product Details';
             var asin = btn.getAttribute('data-asin');
             
-            document.getElementById('modal-img').src = img;
-            document.getElementById('modal-title').textContent = title;
+            var modal = document.getElementById('vvp-product-details-modal');
+            modal.setAttribute('data-asin', asin);
+            document.getElementById('vvp-product-details-modal--hero-image').src = img;
+            document.getElementById('vvp-product-details-modal--product-title').textContent = title;
             document.getElementById('modal-asin').textContent = 'ASIN: ' + asin;
             document.getElementById('popover').style.display = 'block';
             document.getElementById('scrim').style.display = 'block';

@@ -110,15 +110,54 @@ internal fun isMatchingProductSearchUrl(url: String, queue: String, asin: String
     }
 }
 
-internal fun buildDetailsClickScript(asin: String, recId: String, fallbackImageUrl: String = ""): String {
+internal fun buildDetailsImageCss(): String = """
+    #vvp-product-details-img-container {
+        width: clamp(160px, 42vw, 220px) !important;
+        min-width: clamp(160px, 42vw, 220px) !important;
+        height: clamp(160px, 42vw, 220px) !important;
+        margin: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+    }
+    #vvp-product-details-img-container img,
+    #vvp-product-details-modal--hero-image,
+    #vine-helper-details-image {
+        width: 100% !important;
+        height: clamp(160px, 42vw, 220px) !important;
+        max-width: 220px !important;
+        max-height: 220px !important;
+        object-fit: contain !important;
+        display: block !important;
+        margin: 0 auto !important;
+        float: none !important;
+    }
+""".trimIndent()
+
+internal fun buildDetailsClickScript(
+    asin: String,
+    recId: String,
+    fallbackImageUrl: String = "",
+    expectedTitle: String = ""
+): String {
     val asinLiteral = javascriptStringLiteral(asin)
     val recIdLiteral = javascriptStringLiteral(recId)
     val fallbackImageLiteral = javascriptStringLiteral(fallbackImageUrl)
+    val expectedTitleLiteral = javascriptStringLiteral(expectedTitle)
     return """
         (function() {
             const asin = $asinLiteral;
             const recId = $recIdLiteral;
             const fallbackImage = $fallbackImageLiteral;
+            const expectedTitle = $expectedTitleLiteral;
+            const normalizeText = function(value) {
+                return (value || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, ' ')
+                    .trim()
+                    .replace(/\s+/g, ' ');
+            };
             const buttons = Array.from(document.querySelectorAll('.vvp-details-btn input'));
             const exactRecommendation = recId ? buttons.find(function(node) {
                 return (node.getAttribute('data-recommendation-id') || '') === recId;
@@ -153,7 +192,18 @@ internal fun buildDetailsClickScript(asin: String, recId: String, fallbackImageU
                 modalStyle.display !== 'none' &&
                 modalStyle.visibility !== 'hidden' &&
                 existingModal.getAttribute('aria-hidden') !== 'true' &&
-                existingModal.getBoundingClientRect().width > 0;
+                existingModal.getBoundingClientRect().width > 0 &&
+                existingModal.getBoundingClientRect().height > 0;
+            const existingTitle = existingModal ? existingModal.querySelector(
+                '#vvp-product-details-modal--product-title, .vvp-details-title'
+            ) : null;
+            window.vineHelperDetailsRequest = {
+                asin: asin,
+                recId: recId,
+                expectedTitle: expectedTitle,
+                previousTitle: normalizeText(existingTitle ? existingTitle.textContent : ''),
+                startedAt: Date.now()
+            };
             let clickDelay = 0;
             if (modalIsVisible) {
                 const closeButton = existingModal.querySelector(
@@ -162,29 +212,53 @@ internal fun buildDetailsClickScript(asin: String, recId: String, fallbackImageU
                     '#vvp-product-details-modal--close-btn, .a-popover-header .a-button-close'
                 );
                 if (closeButton) closeButton.click();
-                clickDelay = 120;
+                clickDelay = 80;
             }
 
             let imageObserver = null;
             let imageAttempts = 0;
             const applyFallbackImage = function() {
                 if (!fallbackImage) return;
-                let image = document.querySelector(
+                const modal = document.querySelector(
+                    '#vvp-product-details-modal, .vvp-details-modal'
+                );
+                if (!modal) {
+                    imageAttempts += 1;
+                    if (imageAttempts < 80) setTimeout(applyFallbackImage, 100);
+                    return;
+                }
+                const modalTitle = modal.querySelector(
+                    '#vvp-product-details-modal--product-title, .vvp-details-title'
+                );
+                const actualTitle = normalizeText(modalTitle ? modalTitle.textContent : '');
+                const targetTitle = normalizeText(expectedTitle);
+                const asinMatches = Array.from(modal.querySelectorAll('[data-asin], a[href*="/dp/"]')).some(function(node) {
+                    const dataAsin = (node.getAttribute('data-asin') || '').toUpperCase();
+                    const href = node.getAttribute('href') || '';
+                    return dataAsin === asin.toUpperCase() ||
+                        href.toUpperCase().indexOf('/DP/' + asin.toUpperCase()) >= 0;
+                }) || (modal.getAttribute('data-asin') || '').toUpperCase() === asin.toUpperCase();
+                const titleMatches = !!targetTitle && !!actualTitle &&
+                    (actualTitle === targetTitle ||
+                        actualTitle.indexOf(targetTitle) >= 0 ||
+                        targetTitle.indexOf(actualTitle) >= 0);
+                if (!asinMatches && targetTitle && !titleMatches) {
+                    imageAttempts += 1;
+                    if (imageAttempts < 80) setTimeout(applyFallbackImage, 100);
+                    return;
+                }
+                let image = modal.querySelector(
                     'img#vvp-product-details-modal--hero-image, #vvp-product-details-img-container img, #vvp-product-details-modal img'
                 );
                 if (!image) {
-                    const title = document.querySelector(
+                    const title = modal.querySelector(
                         '#vvp-product-details-modal--product-title, #vvp-product-details-modal .a-link-normal'
                     );
                     if (title && title.parentElement) {
                         image = document.createElement('img');
                         image.id = 'vine-helper-details-image';
                         image.alt = '';
-                        image.style.width = '88px';
-                        image.style.height = '88px';
                         image.style.objectFit = 'contain';
-                        image.style.float = 'left';
-                        image.style.margin = '0 12px 8px 0';
                         title.parentElement.insertBefore(image, title);
                     }
                 }
@@ -227,12 +301,35 @@ internal fun buildDetailsClickScript(asin: String, recId: String, fallbackImageU
                 }, 8000);
             }
 
-            setTimeout(function() {
+            const clickTargetWhenModalCloses = function(attempt) {
+                const currentModal = document.querySelector(
+                    '#vvp-product-details-modal, .vvp-details-modal'
+                );
+                const currentStyle = currentModal ? window.getComputedStyle(currentModal) : null;
+                const currentModalVisible = !!currentModal &&
+                    currentStyle.display !== 'none' &&
+                    currentStyle.visibility !== 'hidden' &&
+                    currentModal.getAttribute('aria-hidden') !== 'true' &&
+                    currentModal.getBoundingClientRect().width > 0 &&
+                    currentModal.getBoundingClientRect().height > 0;
+                if (currentModalVisible && attempt < 12) {
+                    setTimeout(function() {
+                        clickTargetWhenModalCloses(attempt + 1);
+                    }, 60);
+                    return;
+                }
                 if (button.isConnected && !button.disabled) {
                     button.click();
                     if (fallbackImage) setTimeout(applyFallbackImage, 0);
                 }
-            }, clickDelay);
+            };
+            if (clickDelay === 0) {
+                clickTargetWhenModalCloses(0);
+            } else {
+                setTimeout(function() {
+                    clickTargetWhenModalCloses(0);
+                }, clickDelay);
+            }
             return 'clicked_existing';
         })();
     """.trimIndent()
@@ -241,31 +338,87 @@ internal fun buildDetailsClickScript(asin: String, recId: String, fallbackImageU
 internal fun didClickExistingDetailsButton(rawJavascriptResult: String?): Boolean =
     rawJavascriptResult == "\"clicked_existing\""
 
-internal fun buildDetailsModalReadyScript(): String = """
-    (function() {
-        const modal = document.querySelector(
-            '#vvp-product-details-modal, .vvp-details-modal'
-        );
-        if (!modal) return 'not_ready';
-        const style = window.getComputedStyle(modal);
-        const isVisible = style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            modal.getAttribute('aria-hidden') !== 'true' &&
-            modal.getBoundingClientRect().width > 0 &&
-            modal.getBoundingClientRect().height > 0;
-        if (!isVisible) return 'not_ready';
+internal fun buildDetailsModalReadyScript(asin: String = "", expectedTitle: String = ""): String {
+    val asinLiteral = javascriptStringLiteral(asin)
+    val expectedTitleLiteral = javascriptStringLiteral(expectedTitle)
+    return """
+        (function() {
+            const asin = $asinLiteral;
+            const expectedTitle = $expectedTitleLiteral;
+            const normalizeText = function(value) {
+                return (value || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, ' ')
+                    .trim()
+                    .replace(/\s+/g, ' ');
+            };
+            const modalContent = document.querySelector(
+                '#vvp-product-details-modal--content'
+            );
+            const modalHost = document.querySelector(
+                '#vvp-product-details-modal, .vvp-details-modal'
+            );
+            const modal = modalContent
+                ? (modalContent.closest('.a-popover') || modalHost || modalContent)
+                : modalHost;
+            if (!modal) return 'not_ready';
+            const style = window.getComputedStyle(modal);
+            const isVisible = style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                modal.getAttribute('aria-hidden') !== 'true' &&
+                modal.getBoundingClientRect().width > 0 &&
+                modal.getBoundingClientRect().height > 0;
+            if (!isVisible) return 'not_ready';
 
-        const title = modal.querySelector(
-            '#vvp-product-details-modal--product-title, .vvp-details-title'
-        );
-        const requestButton = modal.querySelector(
-            '#vvp-join-btn input, #vvp-join-btn button'
-        );
-        return ((title && title.textContent.trim()) || requestButton)
-            ? 'modal_ready'
-            : 'not_ready';
-    })();
-""".trimIndent()
+            const identityRoot = modalContent || modal;
+            const title = identityRoot.querySelector(
+                '#vvp-product-details-modal--product-title, .vvp-details-title'
+            );
+            const requestButton = identityRoot.querySelector(
+                '#vvp-join-btn input, #vvp-join-btn button, #vvp-product-details-modal--request-btn'
+            );
+            const actualTitle = normalizeText(title ? title.textContent : '');
+            const targetTitle = normalizeText(expectedTitle);
+            if (!actualTitle && !requestButton) return 'not_ready';
+
+            const asinMatches = !!asin && (
+                (modal.getAttribute('data-asin') || '').toUpperCase() === asin.toUpperCase() ||
+                (modalHost && (modalHost.getAttribute('data-asin') || '').toUpperCase() === asin.toUpperCase()) ||
+                Array.from(identityRoot.querySelectorAll('[data-asin], a[href*="/dp/"]')).some(function(node) {
+                    const dataAsin = (node.getAttribute('data-asin') || '').toUpperCase();
+                    const href = node.getAttribute('href') || '';
+                    return dataAsin === asin.toUpperCase() ||
+                        href.toUpperCase().indexOf('/DP/' + asin.toUpperCase()) >= 0;
+                })
+            );
+
+            const targetTokens = targetTitle.split(' ').filter(function(token) {
+                return token.length >= 3;
+            }).slice(0, 10);
+            const matchingTokens = targetTokens.filter(function(token) {
+                return actualTitle.split(' ').indexOf(token) >= 0;
+            }).length;
+            const tokenThreshold = Math.max(1, Math.ceil(targetTokens.length * 0.6));
+            const titleMatches = !!targetTitle && !!actualTitle && (
+                actualTitle === targetTitle ||
+                (actualTitle.length >= 12 && actualTitle.indexOf(targetTitle) >= 0) ||
+                (targetTitle.length >= 12 && targetTitle.indexOf(actualTitle) >= 0) ||
+                (targetTokens.length > 0 && matchingTokens >= tokenThreshold)
+            );
+
+            const request = window.vineHelperDetailsRequest || {};
+            const previousTitle = normalizeText(request.previousTitle || '');
+            const changedFromPrevious = !!actualTitle &&
+                (!previousTitle || actualTitle !== previousTitle);
+            const requestMatches = asinMatches ||
+                (titleMatches && changedFromPrevious) ||
+                (!asin && !targetTitle && (!!actualTitle || requestButton)) ||
+                (!targetTitle && request.asin === asin && changedFromPrevious);
+
+            return requestMatches ? 'modal_ready' : 'stale_modal';
+        })();
+    """.trimIndent()
+}
 
 internal fun isDetailsModalReady(rawJavascriptResult: String?): Boolean =
     rawJavascriptResult == "\"modal_ready\""

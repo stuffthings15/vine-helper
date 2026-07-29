@@ -110,7 +110,8 @@ class WebSecurityTest {
         val script = buildDetailsClickScript(
             "B000TEST01",
             "test-rec",
-            "https://images.example.test/product.jpg"
+            "https://images.example.test/product.jpg",
+            "Target Product"
         )
         assertTrue(script.contains("image.src = fallbackImage"))
         assertTrue(script.contains("img#vvp-product-details-modal--hero-image"))
@@ -124,6 +125,16 @@ class WebSecurityTest {
     }
 
     @Test
+    fun detailsImageCss_makesAmazonAndFallbackImagesProminent() {
+        val css = buildDetailsImageCss()
+
+        assertTrue(css.contains("#vvp-product-details-img-container"))
+        assertTrue(css.contains("#vine-helper-details-image"))
+        assertTrue(css.contains("clamp(160px, 42vw, 220px)"))
+        assertTrue(css.contains("object-fit: contain"))
+    }
+
+    @Test
     fun detailsClickResult_acceptsOnlyExistingButtonSuccess() {
         assertTrue(didClickExistingDetailsButton("\"clicked_existing\""))
         assertFalse(didClickExistingDetailsButton("\"not_found\""))
@@ -131,14 +142,18 @@ class WebSecurityTest {
     }
 
     @Test
-    fun detailsModalReady_requiresVisibleAmazonModalContent() {
-        val script = buildDetailsModalReadyScript()
+    fun detailsModalReady_requiresVisibleRequestedProductContent() {
+        val script = buildDetailsModalReadyScript("B000TEST01", "Target Product")
 
         assertTrue(script.contains("#vvp-product-details-modal"))
         assertTrue(script.contains("#vvp-product-details-modal--product-title"))
         assertTrue(script.contains("#vvp-join-btn input"))
+        assertTrue(script.contains("[data-asin]"))
+        assertTrue(script.contains("/dp/"))
+        assertTrue(script.contains("stale_modal"))
         assertTrue(isDetailsModalReady("\"modal_ready\""))
         assertFalse(isDetailsModalReady("\"not_ready\""))
+        assertFalse(isDetailsModalReady("\"stale_modal\""))
     }
 
     @Test

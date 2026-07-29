@@ -146,6 +146,239 @@ class DetailsClickWebViewTest {
         Thread.sleep(350)
         assertEquals("\"$fallback\"", evaluate("document.querySelector('#vvp-product-details-modal img').src"))
     }
+
+    @Test
+    fun detailsImageCss_appliesLargeContainedImageOnDeviceWebView() {
+        loadHtml(
+            """
+            <html><head></head><body>
+              <div id="vvp-product-details-img-container">
+                <img id="vvp-product-details-modal--hero-image">
+              </div>
+            </body></html>
+            """.trimIndent()
+        )
+        evaluate(
+            """
+            var style = document.createElement('style');
+            style.textContent = ${javascriptStringLiteral(buildDetailsImageCss())};
+            document.head.appendChild(style);
+            """.trimIndent()
+        )
+
+        assertEquals(
+            "\"220px|contain|block\"",
+            evaluate(
+                """
+                var image = document.getElementById('vvp-product-details-modal--hero-image');
+                var css = getComputedStyle(image);
+                css.maxHeight + '|' + css.objectFit + '|' + css.display;
+                """.trimIndent()
+            )
+        )
+    }
+
+    @Test
+    fun scraperImageExtraction_usesAmazonLazyImageWhenPlaceholderIsEmpty() {
+        val expected = "https://images-na.ssl-images-amazon.com/images/I/real-product.jpg"
+        loadHtml(
+            """
+            <html><body>
+              <div class="vvp-item-tile">
+                <img
+                  src="https://images-na.ssl-images-amazon.com/images/G/01/transparent-pixel.gif"
+                  data-lazy-src="$expected">
+              </div>
+            </body></html>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            "\"$expected\"",
+            evaluate(
+                """
+                (function() {
+                  var tile = document.querySelector('.vvp-item-tile');
+                  $SCRAPER_IMAGE_EXTRACTION_JS
+                  return imgUrl;
+                })();
+                """.trimIndent()
+            )
+        )
+    }
+
+    @Test
+    fun secondDetailsClick_waitsForAndConfirmsTheNewProduct() {
+        loadHtml(
+            """
+            <html><body>
+              <span class="vvp-details-btn">
+                <input data-asin="FIRSTASIN1" data-recommendation-id="first-rec"
+                  onclick="showProduct('FIRSTASIN1', 'First Product')">
+              </span>
+              <span class="vvp-details-btn">
+                <input data-asin="SECONDASN2" data-recommendation-id="second-rec"
+                  onclick="showProduct('SECONDASN2', 'Second Product')">
+              </span>
+              <div class="a-popover" id="popover" style="display:none">
+                <div class="a-popover-header">
+                  <button class="a-button-close"
+                    onclick="document.getElementById('popover').style.display='none'">Close</button>
+                </div>
+                <div id="vvp-product-details-modal">
+                  <h3 id="vvp-product-details-modal--product-title"></h3>
+                  <span id="vvp-join-btn"><input type="button" value="Request"></span>
+                </div>
+              </div>
+              <script>
+                document.getElementById('vvp-product-details-modal').getBoundingClientRect = function() {
+                  var visible = document.getElementById('popover').style.display !== 'none';
+                  return {
+                    width: visible ? 320 : 0,
+                    height: visible ? 320 : 0
+                  };
+                };
+                function showProduct(asin, title) {
+                  var modal = document.getElementById('vvp-product-details-modal');
+                  modal.setAttribute('data-asin', asin);
+                  document.getElementById('vvp-product-details-modal--product-title').textContent = title;
+                  document.getElementById('popover').style.display = 'block';
+                }
+              </script>
+            </body></html>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            "\"clicked_existing\"",
+            evaluate(buildDetailsClickScript("FIRSTASIN1", "first-rec", "", "First Product"))
+        )
+        Thread.sleep(250)
+        assertEquals(
+            "\"modal_ready\"",
+            evaluate(buildDetailsModalReadyScript("FIRSTASIN1", "First Product"))
+        )
+
+        assertEquals(
+            "\"clicked_existing\"",
+            evaluate(buildDetailsClickScript("SECONDASN2", "second-rec", "", "Second Product"))
+        )
+        assertEquals(
+            "\"not_ready\"",
+            evaluate(buildDetailsModalReadyScript("SECONDASN2", "Second Product"))
+        )
+        Thread.sleep(350)
+        assertEquals("\"Second Product\"", evaluate("document.querySelector('#vvp-product-details-modal--product-title').textContent"))
+        assertEquals(
+            "\"modal_ready\"",
+            evaluate(buildDetailsModalReadyScript("SECONDASN2", "Second Product"))
+        )
+        assertEquals(
+            "\"stale_modal\"",
+            evaluate(buildDetailsModalReadyScript("FIRSTASIN1", "First Product"))
+        )
+    }
+
+    @Test
+    fun mockPortal_repeatedDetailsClicksAreConfirmedWithoutFalseFailure() {
+        loadHtml(MockStoreProvider.getMockHtml())
+        evaluate(
+            """
+            document.getElementById('vvp-product-details-modal').getBoundingClientRect = function() {
+              var visible = getComputedStyle(document.getElementById('popover')).display !== 'none';
+              return {
+                width: visible ? 320 : 0,
+                height: visible ? 320 : 0
+              };
+            };
+            """.trimIndent()
+        )
+
+        assertEquals(
+            "\"clicked_existing\"",
+            evaluate(
+                buildDetailsClickScript(
+                    "MOCKRFY001",
+                    "rec_rfy_1",
+                    "",
+                    "Premium Wireless Mechanical Keyboard (RGB, Blue Switches)"
+                )
+            )
+        )
+        Thread.sleep(250)
+        assertEquals(
+            "\"modal_ready\"",
+            evaluate(
+                buildDetailsModalReadyScript(
+                    "MOCKRFY001",
+                    "Premium Wireless Mechanical Keyboard (RGB, Blue Switches)"
+                )
+            )
+        )
+
+        assertEquals(
+            "\"clicked_existing\"",
+            evaluate(
+                buildDetailsClickScript(
+                    "MOCKRFY002",
+                    "rec_rfy_2",
+                    "",
+                    "Ergonomic Vertical Mouse (Wireless, Rechargeable)"
+                )
+            )
+        )
+        Thread.sleep(350)
+        assertEquals(
+            "\"modal_ready\"",
+            evaluate(
+                buildDetailsModalReadyScript(
+                    "MOCKRFY002",
+                    "Ergonomic Vertical Mouse (Wireless, Rechargeable)"
+                )
+            )
+        )
+    }
+
+    @Test
+    fun detailsModalReady_acceptsVisibleAmazonPopoverWhenModalHostHasZeroWidth() {
+        loadHtml(
+            """
+            <html><body>
+              <div id="a-popover-3" class="a-popover">
+                <div id="vvp-product-details-modal">
+                  <div id="vvp-product-details-modal--content">
+                    <div id="vvp-product-details-modal--main">
+                      <a id="vvp-product-details-modal--product-title">
+                        Anti-Spill Non-Tipping Cup Holder for Boats and Kayaks
+                      </a>
+                    </div>
+                    <span id="vvp-product-details-modal--request-btn">Request product</span>
+                  </div>
+                </div>
+              </div>
+              <script>
+                document.getElementById('vvp-product-details-modal').getBoundingClientRect = function() {
+                  return { width: 0, height: 350 };
+                };
+                document.getElementById('a-popover-3').getBoundingClientRect = function() {
+                  return { width: 550, height: 886 };
+                };
+              </script>
+            </body></html>
+            """.trimIndent()
+        )
+
+        assertEquals(
+            "\"modal_ready\"",
+            evaluate(
+                buildDetailsModalReadyScript(
+                    "B0H6JSC1ZB",
+                    "Anti-Spill Non-Tipping Cup Holder for Boats and Kayaks"
+                )
+            )
+        )
+    }
+
     private fun loadHtml(html: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val loaded = CountDownLatch(1)
