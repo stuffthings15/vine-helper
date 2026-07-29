@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private var pendingRecIdClick: String? = null
     private var pendingQueueClick: String? = null
     private var pendingImageUrl: String = ""
+    private var pendingDetailsTitle: String = ""
     private val detailsClickHandler = Handler(Looper.getMainLooper())
     private var browserLoadGeneration = 0L
     private var detailsRetryRunnable: Runnable? = null
@@ -671,6 +672,7 @@ class MainActivity : ComponentActivity() {
         pendingRecIdClick = recId
         pendingQueueClick = queue
         pendingImageUrl = pendingItem?.imgUrl.orEmpty()
+        pendingDetailsTitle = pendingItem?.title.orEmpty()
         // Amazon's Vine search box does not reliably accept ASINs. Loading a
         // ?search=<asin> URL can produce "No results found" even while the tile
         // is still requestable. Load the live queue and select its exact real
@@ -714,7 +716,9 @@ class MainActivity : ComponentActivity() {
         val asin = pendingAsinClick ?: return
         val recId = pendingRecIdClick.orEmpty()
 
-        webView.evaluateJavascript(buildDetailsClickScript(asin, recId, pendingImageUrl)) { rawResult ->
+        webView.evaluateJavascript(
+            buildDetailsClickScript(asin, recId, pendingImageUrl, pendingDetailsTitle)
+        ) { rawResult ->
             if (requestGeneration != detailsRequestGeneration) return@evaluateJavascript
 
             if (didClickExistingDetailsButton(rawResult)) {
@@ -772,7 +776,9 @@ class MainActivity : ComponentActivity() {
         if (requestGeneration != detailsRequestGeneration) return
         val asin = pendingAsinClick ?: return
 
-        webView.evaluateJavascript(buildDetailsModalReadyScript()) { rawResult ->
+        webView.evaluateJavascript(
+            buildDetailsModalReadyScript(asin, pendingDetailsTitle)
+        ) { rawResult ->
             if (requestGeneration != detailsRequestGeneration) return@evaluateJavascript
             if (isDetailsModalReady(rawResult)) {
                 android.util.Log.d(
@@ -843,6 +849,7 @@ class MainActivity : ComponentActivity() {
         pendingRecIdClick = null
         pendingQueueClick = null
         pendingImageUrl = ""
+        pendingDetailsTitle = ""
         pendingDetailsTargetUrl = null
         pendingDetailsSearchUrl = null
         detailsClickAttempts = 0
@@ -857,6 +864,7 @@ class MainActivity : ComponentActivity() {
         pendingRecIdClick = null
         pendingQueueClick = null
         pendingImageUrl = ""
+        pendingDetailsTitle = ""
         pendingDetailsTargetUrl = null
         pendingDetailsSearchUrl = null
         detailsClickAttempts = 0
@@ -915,6 +923,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun injectCustomMobileStyles(webView: WebView) {
+        val detailsImageCss = buildDetailsImageCss()
         val css = """
             #a-page, .a-container {
                 width: 100% !important;
@@ -1140,16 +1149,7 @@ class MainActivity : ComponentActivity() {
                 gap: 8px !important;
                 align-items: center !important;
             }
-            #vvp-product-details-img-container {
-                width: 90px !important;
-                min-width: 90px !important;
-                margin: 0 !important;
-            }
-            #vvp-product-details-img-container img, #vvp-product-details-modal--hero-image {
-                max-height: 80px !important;
-                max-width: 80px !important;
-                object-fit: contain !important;
-            }
+            $detailsImageCss
             #vvp-product-details-info-container {
                 flex: 1 !important;
                 margin: 0 !important;

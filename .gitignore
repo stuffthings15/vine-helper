@@ -9,10 +9,25 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 /build
+/app/build
+/.kotlin
+/.agents
 /captures
+/device_evidence
 .externalNativeBuild
 .cxx
 local.properties
 
 *.jks
 keystore.properties
+
+# Generated release and device evidence.
+/*.apk
+/*.aab
+/*.png
+/*.log
+/*.docx
+/window_dump.xml
+/git_*.txt
+/logcat.txt
+/regression_test_report.json
